@@ -1,9 +1,9 @@
 ﻿// Replace the URL with the actual API endpoint you want to call
 
-using MySqlConnector;
+using FlightScannerApp.CheapFlights;
+using Microsoft.EntityFrameworkCore;
 
 int updateNo = await GetLastUpdateNo();
-const string connectionString = "server=mysql;database=CheapFlights;user=root;password=pass;";
 
 while (true)
 {
@@ -48,15 +48,7 @@ List<(string, string)> GetFlightsToScan()
 
 static async Task<int> GetLastUpdateNo()
 {
-    const string query = "SELECT MAX(UpdateNo) FROM OneWayFares";
-    await using var cn = new MySqlConnection(connectionString);
-    await cn.OpenAsync();
-    await using var cmd = new MySqlCommand(query, cn);
-
-    int result = cmd.ExecuteScalar() as int? ?? 0;
-
-    await cn.CloseAsync();
-    return result;
+    return await new CheapFlightsContext().OneWayFares.MaxAsync(f => f.UpdateNo);
 }
 
 async Task FetchFlightPrices(string origin, string destination, string outboundMonthOfDate)
@@ -80,20 +72,12 @@ static async Task<string> GetApiResponse(string apiUrl)
 
 async Task StoreInDatabase(string origin, string destination, string jsonResponse)
 {
-    await using var cn = new MySqlConnection(connectionString);
-    await cn.OpenAsync();
-
-    const string query = "INSERT " +
-                         "INTO OneWayFares (Origin, Destination, Content, UpdateNo) " +
-                         "VALUES (@origin, @destination, @json, @updateNo)";
-
-    await using var cmd = new MySqlCommand(query, cn);
-
-    cmd.Parameters.AddWithValue("@origin", origin);
-    cmd.Parameters.AddWithValue("@destination", destination);
-    cmd.Parameters.AddWithValue("@json", jsonResponse);
-    cmd.Parameters.AddWithValue("@updateNo", updateNo);
-
-    cmd.ExecuteNonQuery();
-    await cn.CloseAsync();
+    var ctx = new CheapFlightsContext();
+    await ctx.OneWayFares.AddAsync(new OneWayFare
+    {
+        Origin = origin,
+        Destination = destination,
+        Content = jsonResponse,
+        UpdateNo = updateNo
+    });
 }

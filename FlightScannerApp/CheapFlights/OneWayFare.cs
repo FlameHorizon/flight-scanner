@@ -23,4 +23,6 @@ public partial class OneWayFare
     public string Content { get; set; } = null!;
 
     public int UpdateNo { get; set; }
+
+    public int Id { get; set; }
 }
