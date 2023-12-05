@@ -1,6 +1,4 @@
-﻿// Replace the URL with the actual API endpoint you want to call
-
-using FlightScannerApp.CheapFlights;
+﻿using FlightScannerApp.CheapFlights;
 using Microsoft.EntityFrameworkCore;
 
 int updateNo = await GetLastUpdateNo();
@@ -34,6 +32,7 @@ async Task StartJob()
             var start = DateTime.UtcNow.AddMonths(i).ToString("yyyy-MM-dd");
             await FetchFlightPrices(origin, destination, start);
             await FetchFlightPrices(destination, origin, start);
+            await UpdateFaresMap();
         }
     }
 }
@@ -80,4 +79,43 @@ async Task StoreInDatabase(string origin, string destination, string jsonRespons
         Content = jsonResponse,
         UpdateNo = updateNo
     });
+}
+
+async Task UpdateFaresMap()
+{
+    var ctx = new CheapFlightsContext();
+    int maxUpdateNo = await ctx.ViewFlightPrices.MaxAsync(f => f.UpdateNo);
+
+    List<ViewFlightPrice> flightsFromWarsaw = ctx.ViewFlightPrices
+        .Where(f => f.Origin == "WAW" &&
+                    f.UpdateNo == maxUpdateNo).ToList();
+
+    foreach (ViewFlightPrice flight in flightsFromWarsaw)
+    {
+        // Get flights to Warsaw after flight.Day
+        List<ViewFlightPrice> futureFlights = ctx.ViewFlightPrices
+            .Where(f => f.Destination == "WAW" &&
+                        f.Origin == flight.Destination &&
+                        f.Day.Value.Date > flight.Day.Value.Date &&
+                        f.Day.Value.Date <= flight.Day.Value.AddDays(14) &&
+                        f.UpdateNo == maxUpdateNo)
+            .ToList();
+
+        foreach (ViewFlightPrice futureFlight in futureFlights)
+        {
+            await ctx.FaresPairs.AddAsync(new FaresPair
+            {
+                Origin = flight.Origin,
+                Destination = flight.Destination,
+                OriginPrice = flight.Price.Value,
+                OriginCurrency = flight.Currency,
+                OriginDate = flight.Day.Value,
+                DestinationPrice = futureFlight.Price.Value,
+                DestinationCurrency = futureFlight.Currency,
+                DestinationDate = futureFlight.Day.Value,
+                UpdateNo = flight.UpdateNo
+            });
+            ctx.SaveChanges();
+        }
+    }
 }
