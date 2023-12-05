@@ -32,9 +32,10 @@ async Task StartJob()
             var start = DateTime.UtcNow.AddMonths(i).ToString("yyyy-MM-dd");
             await FetchFlightPrices(origin, destination, start);
             await FetchFlightPrices(destination, origin, start);
-            await UpdateFaresMap();
         }
     }
+
+    await UpdateFaresMap();
 }
 
 List<(string, string)> GetFlightsToScan()
@@ -47,7 +48,16 @@ List<(string, string)> GetFlightsToScan()
 
 static async Task<int> GetLastUpdateNo()
 {
-    return await new CheapFlightsContext().OneWayFares.MaxAsync(f => f.UpdateNo);
+    // The only way we can get InvalidOperationException is when table
+    // OneWayFares is empty. When this does happen, we will return 0 
+    // to properly initialize first value.
+    var ctx = new CheapFlightsContext();
+    if (await ctx.OneWayFares.AnyAsync())
+    {
+        return await ctx.OneWayFares.MaxAsync(f => f.UpdateNo);
+    }
+
+    return 0;
 }
 
 async Task FetchFlightPrices(string origin, string destination, string outboundMonthOfDate)
@@ -79,6 +89,7 @@ async Task StoreInDatabase(string origin, string destination, string jsonRespons
         Content = jsonResponse,
         UpdateNo = updateNo
     });
+    await ctx.SaveChangesAsync();
 }
 
 async Task UpdateFaresMap()
@@ -86,15 +97,16 @@ async Task UpdateFaresMap()
     var ctx = new CheapFlightsContext();
     int maxUpdateNo = await ctx.ViewFlightPrices.MaxAsync(f => f.UpdateNo);
 
+    const string waw = "WAW";
     List<ViewFlightPrice> flightsFromWarsaw = ctx.ViewFlightPrices
-        .Where(f => f.Origin == "WAW" &&
+        .Where(f => f.Origin == waw &&
                     f.UpdateNo == maxUpdateNo).ToList();
 
     foreach (ViewFlightPrice flight in flightsFromWarsaw)
     {
         // Get flights to Warsaw after flight.Day
         List<ViewFlightPrice> futureFlights = ctx.ViewFlightPrices
-            .Where(f => f.Destination == "WAW" &&
+            .Where(f => f.Destination == waw &&
                         f.Origin == flight.Destination &&
                         f.Day.Value.Date > flight.Day.Value.Date &&
                         f.Day.Value.Date <= flight.Day.Value.AddDays(14) &&
