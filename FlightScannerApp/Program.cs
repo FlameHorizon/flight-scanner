@@ -97,15 +97,13 @@ async Task UpdateFaresMap()
     var ctx = new CheapFlightsContext();
     int maxUpdateNo = await ctx.ViewFlightPrices.MaxAsync(f => f.UpdateNo);
 
-    const string origin = "WAW";
     List<ViewFlightPrice> flightsFromWarsaw = ctx.ViewFlightPrices
-        .Where(f => f.Origin == origin &&
-                    f.UpdateNo == maxUpdateNo).ToList();
+        .Where(f =>f.UpdateNo == maxUpdateNo).ToList();
 
     foreach (ViewFlightPrice flight in flightsFromWarsaw)
     {
         List<ViewFlightPrice> futureFlights = ctx.ViewFlightPrices
-            .Where(f => f.Destination == origin &&
+            .Where(f => f.Destination == f.Origin &&
                         f.Origin == flight.Destination &&
                         f.Day.Value.Date > flight.Day.Value.Date &&
                         f.Day.Value.Date <= flight.Day.Value.AddDays(14) &&
